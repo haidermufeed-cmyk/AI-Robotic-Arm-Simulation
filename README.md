@@ -1,7 +1,14 @@
-
 # AI Robotic Arm Simulation
 
 A vision-based robotic arm simulation controlled through real-time hand gestures using computer vision.
+
+## 🎥 Project Demonstration
+
+**Watch the robotic arm in action:**
+
+[▶ View Demo Video (MP4)](demo.mp4)
+
+Download or open the video to see real-time hand tracking and robotic arm movement.
 
 ## Overview
 
@@ -37,13 +44,12 @@ Users can control the simulated robotic arm through hand movements captured by a
 
 ```text
 Robotic_arm/
-│
 ├── .vscode/
 │   └── tasks.json
-│
 ├── app.py
 ├── hand_tracking.py
 ├── index.html
+├── demo.mp4
 ├── README.md
 └── .gitignore
 ```
@@ -123,7 +129,7 @@ http://localhost:8000
 
 **Haider Mufeed**
 
-GitHub: https://github.com/haidermufeed-cmyk
+GitHub: [haidermufeed-cmyk](https://github.com/haidermufeed-cmyk)
 
 ---
 
