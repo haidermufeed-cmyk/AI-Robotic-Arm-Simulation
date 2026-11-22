@@ -1,0 +1,493 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Robotic Arm Dashboard</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1220;color:#e8eef8;font-family:Arial,sans-serif}
+.topbar{min-height:70px;padding:15px 24px;display:flex;align-items:center;justify-content:space-between;gap:15px;background:#111c2e;border-bottom:1px solid #25344b}
+.brand{font-size:20px;font-weight:bold;letter-spacing:.5px}
+.brand span{color:#38bdf8}
+.top-status{color:#9aabc2;font-size:13px}
+.dashboard{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:18px;padding:18px;max-width:1600px;margin:auto}
+.workspace,.panel{background:#111c2e;border:1px solid #25344b;border-radius:12px;overflow:hidden}
+.workspace-heading{padding:17px 20px;border-bottom:1px solid #25344b;display:flex;justify-content:space-between;align-items:center}
+.workspace-heading h2{font-size:16px;margin:0}
+.live-label{color:#38bdf8;font-size:11px;letter-spacing:1px}
+#scene{width:100%;height:510px;overflow:hidden}
+canvas{display:block}
+#status{margin:14px 18px;padding:12px 14px;background:#192a3f;border:1px solid #30445f;border-radius:8px;color:#ffca28;font-size:13px}
+#controls{padding:18px;display:flex;flex-wrap:wrap;gap:20px;border-top:1px solid #25344b}
+.control{min-width:125px}
+.control label{display:block;margin-bottom:9px;color:#b8c8dd;font-size:12px}
+.control input{width:135px;accent-color:#38bdf8;cursor:pointer}
+.sidebar{display:flex;flex-direction:column;gap:16px}
+.panel{padding:15px}
+.panel h3{margin:0 0 13px;font-size:14px;font-weight:600;color:#dce8f8}
+.camera-frame{width:100%;aspect-ratio:4/3;background:#080e18;border-radius:8px;overflow:hidden;border:1px solid #30445f}
+#cameraFeed{width:100%;height:100%;display:block;object-fit:contain;image-rendering:auto}
+.camera-note{margin-top:9px;color:#8396af;font-size:11px}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #25344b;font-size:12px}
+.info-row:last-child{border-bottom:none}
+.info-label{color:#9aabc2}
+.info-value{color:#e8eef8;font-weight:bold}
+.indicator{display:inline-flex;align-items:center;gap:7px}
+.dot{width:8px;height:8px;display:inline-block;border-radius:50%;background:#64748b}
+.dot.green{background:#00e676;box-shadow:0 0 8px #00e676}
+.dot.yellow{background:#ffca28}
+.joint-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.joint-box{background:#192a3f;padding:12px;border-radius:8px}
+.joint-name{color:#9aabc2;font-size:11px;margin-bottom:7px}
+.joint-angle{font-size:18px;font-weight:bold;color:#38bdf8;font-variant-numeric:tabular-nums}
+#help{text-align:center;padding:15px;color:#8396af;font-size:12px}
+@media(max-width:950px){
+.dashboard{grid-template-columns:1fr}
+.sidebar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+#scene{height:430px}
+}
+@media(max-width:600px){
+.topbar{padding:14px}
+.dashboard{padding:10px;gap:12px}
+.sidebar{grid-template-columns:1fr}
+#scene{height:350px}
+#controls{gap:15px}
+.control{min-width:115px}
+.control input{width:115px}
+}
+</style>
+
+<script type="importmap">
+{
+ "imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+ }
+}
+</script>
+</head>
+
+<body>
+<header class="topbar">
+ <div class="brand">AI <span>ROBOTICS</span> CONTROL</div>
+ <div class="top-status">VISION-BASED ROBOTIC ARM SIMULATOR</div>
+</header>
+
+<div class="dashboard">
+<main class="workspace">
+ <div class="workspace-heading">
+  <h2>3D Robotic Arm Workspace</h2>
+  <span class="live-label">● LIVE SIMULATION</span>
+ </div>
+
+ <div id="scene"></div>
+ <div id="status">Waiting for hand tracking...</div>
+
+ <div id="controls">
+  <div class="control"><label>Base Rotation</label><input id="base" type="range" min="-120" max="120" value="0"></div>
+  <div class="control"><label>Shoulder</label><input id="shoulder" type="range" min="-120" max="120" value="0"></div>
+  <div class="control"><label>Elbow</label><input id="elbow" type="range" min="-150" max="0" value="0"></div>
+  <div class="control"><label>Wrist</label><input id="wrist" type="range" min="-180" max="180" value="0"></div>
+  <div class="control"><label>Gripper</label><input id="gripper" type="range" min="0" max="100" value="100"></div>
+ </div>
+
+ <div id="help">Move palm left/right to rotate. Move up/down to control arm height. Pinch to grip.</div>
+</main>
+
+<aside class="sidebar">
+ <section class="panel">
+  <h3>Live Camera Feed</h3>
+  <div class="camera-frame">
+   <img id="cameraFeed" src="http://127.0.0.1:5000/video_feed" alt="Waiting for webcam feed..." decoding="async" loading="eager" draggable="false">
+  </div>
+  <div class="camera-note">Using the existing hand-tracking camera</div>
+ </section>
+
+ <section class="panel">
+  <h3>System Status</h3>
+  <div class="info-row"><span class="info-label">Hand Tracking</span><span class="info-value indicator"><span id="trackingDot" class="dot"></span><span id="trackingValue">Waiting</span></span></div>
+  <div class="info-row"><span class="info-label">Gripper</span><span class="info-value" id="gripperValue">Open</span></div>
+  <div class="info-row"><span class="info-label">Object</span><span class="info-value" id="objectValue">Not Holding</span></div>
+ </section>
+
+ <section class="panel">
+  <h3>Joint Angles</h3>
+  <div class="joint-grid">
+   <div class="joint-box"><div class="joint-name">Base</div><div class="joint-angle" id="baseAngle">0°</div></div>
+   <div class="joint-box"><div class="joint-name">Shoulder</div><div class="joint-angle" id="shoulderAngle">0°</div></div>
+   <div class="joint-box"><div class="joint-name">Elbow</div><div class="joint-angle" id="elbowAngle">0°</div></div>
+   <div class="joint-box"><div class="joint-name">Wrist</div><div class="joint-angle" id="wristAngle">0°</div></div>
+  </div>
+ </section>
+</aside>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+// SCENE
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101827);
+const container = document.getElementById('scene');
+
+const camera = new THREE.PerspectiveCamera(
+ 50, container.clientWidth/container.clientHeight, 0.1, 100
+);
+camera.position.set(5,4.5,8);
+camera.lookAt(0,1.5,0);
+
+// RENDERER - reduced workload
+const renderer = new THREE.WebGLRenderer({
+ antialias:false,
+ powerPreference:'low-power'
+});
+renderer.setSize(container.clientWidth,container.clientHeight);
+renderer.setPixelRatio(1);
+container.appendChild(renderer.domElement);
+
+// VIEW CONTROLS
+const orbit = new OrbitControls(camera,renderer.domElement);
+orbit.enableDamping = true;
+orbit.dampingFactor = 0.08;
+orbit.target.set(0,1.5,0);
+orbit.minDistance = 4;
+orbit.maxDistance = 12;
+
+// LIGHTING
+scene.add(new THREE.HemisphereLight(0xffffff,0x445566,2));
+const light = new THREE.DirectionalLight(0xffffff,2);
+light.position.set(4,8,5);
+scene.add(light);
+
+// GROUND
+const ground = new THREE.Mesh(
+ new THREE.PlaneGeometry(12,12),
+ new THREE.MeshStandardMaterial({color:0x263449})
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.y = -0.2;
+scene.add(ground);
+scene.add(new THREE.GridHelper(12,24));
+
+// MATERIALS
+const metal = new THREE.MeshStandardMaterial({color:0x2196f3,metalness:0.6,roughness:0.3});
+const jointMaterial = new THREE.MeshStandardMaterial({color:0xffa726,metalness:0.4,roughness:0.4});
+const cubeMaterial = new THREE.MeshStandardMaterial({color:0x00e676});
+
+// COMPONENTS
+function cylinder(parent,radius,length,y,material){
+ const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius,radius,length,24),material);
+ mesh.position.y=y;
+ parent.add(mesh);
+ return mesh;
+}
+function joint(parent){
+ const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18,24,24),jointMaterial);
+ parent.add(mesh);
+ return mesh;
+}
+
+// ROBOT BASE
+cylinder(scene,0.65,0.35,0,metal);
+const base = new THREE.Group();
+base.position.y=0.18;
+scene.add(base);
+
+const upperArmLength=1.5;
+const forearmLength=1.3;
+
+// SHOULDER
+const shoulder = new THREE.Group();
+base.add(shoulder);
+joint(shoulder);
+cylinder(shoulder,0.16,upperArmLength,upperArmLength/2,metal);
+
+// ELBOW
+const elbow = new THREE.Group();
+elbow.position.y=upperArmLength;
+shoulder.add(elbow);
+joint(elbow);
+cylinder(elbow,0.13,forearmLength,forearmLength/2,metal);
+
+// WRIST
+const wrist = new THREE.Group();
+wrist.position.y=forearmLength;
+elbow.add(wrist);
+joint(wrist);
+cylinder(wrist,0.12,0.25,0.1,jointMaterial);
+
+// GRIPPER
+const gripper = new THREE.Group();
+wrist.add(gripper);
+const fingerGeometry = new THREE.BoxGeometry(0.09,0.4,0.12);
+const leftFinger = new THREE.Mesh(fingerGeometry,metal);
+const rightFinger = new THREE.Mesh(fingerGeometry,metal);
+gripper.add(leftFinger,rightFinger);
+
+// OBJECT
+const cube = new THREE.Mesh(new THREE.BoxGeometry(0.4,0.4,0.4),cubeMaterial);
+cube.position.set(1.85,0.2,0);
+scene.add(cube);
+
+// TARGET RING
+const targetRing = new THREE.Mesh(
+ new THREE.TorusGeometry(0.42,0.025,8,48),
+ new THREE.MeshBasicMaterial({color:0x00e676})
+);
+targetRing.rotation.x=-Math.PI/2;
+targetRing.position.set(1.85,-0.17,0);
+scene.add(targetRing);
+
+// PICKUP SYSTEM
+let isHolding=false;
+const gripperWorldPosition=new THREE.Vector3();
+const cubeWorldPosition=new THREE.Vector3();
+const status=document.getElementById('status');
+
+// DASHBOARD ELEMENTS
+const trackingValue=document.getElementById('trackingValue');
+const trackingDot=document.getElementById('trackingDot');
+const gripperValue=document.getElementById('gripperValue');
+const objectValue=document.getElementById('objectValue');
+
+function getValue(id){
+ return Number(document.getElementById(id).value);
+}
+function setValue(id,value){
+ const slider=document.getElementById(id);
+ slider.value=THREE.MathUtils.clamp(value,Number(slider.min),Number(slider.max));
+}
+
+function updateDashboardReadouts(){
+ document.getElementById('baseAngle').textContent=`${Math.round(smoothBase)}°`;
+ document.getElementById('shoulderAngle').textContent=`${Math.round(smoothShoulder)}°`;
+ document.getElementById('elbowAngle').textContent=`${Math.round(smoothElbow)}°`;
+ document.getElementById('wristAngle').textContent=`${Math.round(smoothWrist)}°`;
+ gripperValue.textContent=getValue('gripper')<50?'Closed':'Open';
+ objectValue.textContent=isHolding?'Holding':'Not Holding';
+}
+
+// ARM MOVEMENT
+function updateArm(){
+ base.rotation.y=THREE.MathUtils.degToRad(getValue('base'));
+ shoulder.rotation.z=THREE.MathUtils.degToRad(getValue('shoulder'));
+ elbow.rotation.z=THREE.MathUtils.degToRad(getValue('elbow'));
+ wrist.rotation.z=THREE.MathUtils.degToRad(getValue('wrist'));
+
+ const grip=getValue('gripper')/100;
+ const fingerGap=0.055+grip*0.18;
+ leftFinger.position.set(-fingerGap,0,0);
+ rightFinger.position.set(fingerGap,0,0);
+}
+
+// INVERSE KINEMATICS
+function solveIK(targetX,targetY){
+ const L1=upperArmLength,L2=forearmLength;
+ let distance=Math.sqrt(targetX*targetX+targetY*targetY);
+ distance=THREE.MathUtils.clamp(distance,Math.abs(L1-L2)+0.02,L1+L2-0.02);
+
+ const cosElbow=THREE.MathUtils.clamp(
+  (distance*distance-L1*L1-L2*L2)/(2*L1*L2),-1,1
+ );
+ const elbowAngle=-Math.acos(cosElbow);
+ const targetAngle=Math.atan2(-targetX,targetY);
+ const correctionAngle=Math.atan2(
+  L2*Math.sin(elbowAngle),L1+L2*Math.cos(elbowAngle)
+ );
+ const shoulderAngle=targetAngle-correctionAngle;
+
+ return {
+  shoulder:THREE.MathUtils.radToDeg(shoulderAngle),
+  elbow:THREE.MathUtils.radToDeg(elbowAngle)
+ };
+}
+
+// MOVEMENT TARGETS
+let targetBase=0,targetShoulder=0,targetElbow=0,targetWrist=0,targetGripper=100;
+let smoothBase=0,smoothShoulder=0,smoothElbow=0,smoothWrist=0,smoothGripper=100;
+let filteredX=0.5,filteredY=0.5;
+let handDetected=false;
+let requestInProgress=false;
+
+function mapPalm(value,min,max){
+ const normalized=(value-min)/(max-min);
+ return THREE.MathUtils.clamp((normalized-0.5)*2,-1,1);
+}
+function applyDeadZone(value,deadZone=0.035){
+ if(Math.abs(value)<deadZone)return 0;
+ const adjusted=Math.sign(value)*(Math.abs(value)-deadZone)/(1-deadZone);
+ return THREE.MathUtils.clamp(adjusted,-1,1);
+}
+
+// HAND DATA
+async function readHandPosition(){
+ if(requestInProgress)return;
+ requestInProgress=true;
+
+ try{
+  const response=await fetch('http://127.0.0.1:5000/hand',{cache:'no-store'});
+  if(!response.ok)throw new Error('Server unavailable');
+  const hand=await response.json();
+
+  if(hand.detected!==true){
+   handDetected=false;
+   trackingValue.textContent='Not detected';
+   trackingDot.className='dot yellow';
+   status.textContent=isHolding?'Object held — show your hand to continue':'Show your hand to the camera';
+   status.style.color='#ffca28';
+   return;
+  }
+
+  const width=hand.width||640;
+  const height=hand.height||480;
+  const rawX=THREE.MathUtils.clamp(hand.x/width,0,1);
+  const rawY=THREE.MathUtils.clamp(hand.y/height,0,1);
+
+  const cameraFilter=0.65;
+  filteredX+=(rawX-filteredX)*cameraFilter;
+  filteredY+=(rawY-filteredY)*cameraFilter;
+
+  const horizontal=mapPalm(filteredX,0.32,0.68);
+  targetBase=applyDeadZone(horizontal)*120;
+
+  const vertical=mapPalm(filteredY,0.30,0.62);
+  const verticalControl=applyDeadZone(vertical);
+  const desiredWorldHeight=THREE.MathUtils.mapLinear(verticalControl,-1,1,0.2,1.75);
+  const targetHeight=desiredWorldHeight-base.position.y;
+
+  const solution=solveIK(1.85,targetHeight);
+  targetShoulder=solution.shoulder;
+  targetElbow=solution.elbow;
+
+  targetWrist=THREE.MathUtils.clamp(-(targetShoulder+targetElbow),-180,180);
+  if(typeof hand.pinch==='boolean')targetGripper=hand.pinch?0:100;
+
+  handDetected=true;
+  trackingValue.textContent='Detected';
+  trackingDot.className='dot green';
+  status.textContent=isHolding?'Object picked up — move your palm':'Hand tracking active — IK control enabled';
+  status.style.color='#00e676';
+
+ }catch(error){
+  handDetected=false;
+  trackingValue.textContent='Disconnected';
+  trackingDot.className='dot yellow';
+  status.textContent='Waiting for hand tracking connection...';
+  status.style.color='#ffca28';
+ }finally{
+  requestInProgress=false;
+ }
+}
+
+// Poll hand data at 20 times per second
+setInterval(readHandPosition,50);
+
+// PICK AND PLACE
+function handlePickAndPlace(){
+ scene.updateMatrixWorld(true);
+ gripper.getWorldPosition(gripperWorldPosition);
+ cube.getWorldPosition(cubeWorldPosition);
+
+ const distance=gripperWorldPosition.distanceTo(cubeWorldPosition);
+ const gripValue=getValue('gripper');
+
+ if(!isHolding&&gripValue<12&&distance<0.38){
+  gripper.attach(cube);
+  isHolding=true;
+  status.textContent='Object picked up!';
+  status.style.color='#00e676';
+ }
+
+ if(isHolding&&gripValue>85){
+  scene.attach(cube);
+  cube.position.y=0.2;
+  isHolding=false;
+  status.textContent='Object released!';
+  status.style.color='#ffca28';
+ }
+}
+
+// MANUAL SLIDERS
+document.querySelectorAll('#controls input').forEach(input=>{
+ input.addEventListener('input',()=>{
+  handDetected=false;
+  updateArm();
+  updateDashboardReadouts();
+  trackingValue.textContent='Manual control';
+  trackingDot.className='dot yellow';
+ });
+});
+
+// INITIALIZE
+updateArm();
+updateDashboardReadouts();
+
+// OPTIMIZED ANIMATION LOOP
+let previousFrameTime=0;
+let lastRenderTime=0;
+let lastPickupTime=0;
+let lastReadoutTime=0;
+
+function animate(timestamp){
+ requestAnimationFrame(animate);
+
+ // Limit expensive 3D rendering to about 30 FPS
+ if(timestamp-lastRenderTime<33)return;
+
+ const delta=previousFrameTime
+  ?Math.min((timestamp-previousFrameTime)/1000,0.05)
+  :0.033;
+
+ previousFrameTime=timestamp;
+ lastRenderTime=timestamp;
+
+ if(handDetected){
+  const movementSmoothness=1-Math.exp(-14*delta);
+  const gripSmoothness=1-Math.exp(-16*delta);
+
+  smoothBase+=(targetBase-smoothBase)*movementSmoothness;
+  smoothShoulder+=(targetShoulder-smoothShoulder)*movementSmoothness;
+  smoothElbow+=(targetElbow-smoothElbow)*movementSmoothness;
+  smoothWrist+=(targetWrist-smoothWrist)*movementSmoothness;
+  smoothGripper+=(targetGripper-smoothGripper)*gripSmoothness;
+
+  setValue('base',smoothBase);
+  setValue('shoulder',smoothShoulder);
+  setValue('elbow',smoothElbow);
+  setValue('wrist',smoothWrist);
+  setValue('gripper',smoothGripper);
+ }
+
+ updateArm();
+
+ // Pickup checks only 15 times per second
+ if(timestamp-lastPickupTime>66){
+  handlePickAndPlace();
+  lastPickupTime=timestamp;
+ }
+
+ // Dashboard text only updates 10 times per second
+ if(timestamp-lastReadoutTime>100){
+  updateDashboardReadouts();
+  lastReadoutTime=timestamp;
+ }
+
+ orbit.update();
+ renderer.render(scene,camera);
+}
+
+requestAnimationFrame(animate);
+
+// RESPONSIVE SCREEN
+window.addEventListener('resize',()=>{
+ camera.aspect=container.clientWidth/container.clientHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(container.clientWidth,container.clientHeight);
+});
+</script>
+</body>
+</html>

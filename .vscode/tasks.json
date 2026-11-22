@@ -1,0 +1,56 @@
+
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Flask Server",
+            "type": "shell",
+            "command": "${workspaceFolder}/venv/Scripts/python.exe",
+            "args": ["app.py"],
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Hand Tracking",
+            "type": "shell",
+            "command": "${workspaceFolder}/venv/Scripts/python.exe",
+            "args": ["hand_tracking.py"],
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Dashboard Website",
+            "type": "shell",
+            "command": "${workspaceFolder}/venv/Scripts/python.exe",
+            "args": ["-m", "http.server", "8000"],
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Open Dashboard in Chrome",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-NoProfile",
+                "-Command",
+                "Start-Sleep -Seconds 5; Start-Process chrome 'http://localhost:8000'"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Launch Everything",
+            "dependsOn": [
+                "Start Flask Server",
+                "Start Hand Tracking",
+                "Start Dashboard Website",
+                "Open Dashboard in Chrome"
+            ],
+            "dependsOrder": "parallel",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
