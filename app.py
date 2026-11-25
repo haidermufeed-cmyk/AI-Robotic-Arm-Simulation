@@ -2,6 +2,7 @@
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from threading import Lock, Condition
+from pathlib import Path
 
 app = Flask(__name__)
 CORS(app)
@@ -94,6 +95,13 @@ def video_feed():
             "X-Accel-Buffering": "no"
         }
     )
+
+
+@app.route("/shutdown", methods=["POST"])
+def shutdown():
+    flag = Path(__file__).with_name(".roboware_shutdown")
+    flag.touch(exist_ok=True)
+    return jsonify({"status": "shutdown signal sent"})
 
 
 if __name__ == "__main__":

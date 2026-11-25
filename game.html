@@ -1,0 +1,708 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RoboWare - Advanced Robotic Arm</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#101b2b;color:white;font-family:Arial}
+#game{position:fixed;inset:0}
+#topbar{position:fixed;top:0;left:0;right:0;height:65px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;background:#091321ee;border-bottom:1px solid #304158;z-index:2}
+.logo{font-size:19px;font-weight:bold;letter-spacing:1px}
+.logo span{color:#39c6ff}
+#panel{position:fixed;top:85px;left:18px;width:245px;padding:18px;background:#0b1424ed;border:1px solid #304158;border-radius:12px;z-index:2}
+h3{margin:0 0 16px;color:#47caff}
+.info{font-size:13px;color:#9eafc5;margin:14px 0}
+.info strong{display:block;color:white;font-size:17px;margin-top:5px}
+#connection{color:#ffbd38}
+#help{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#0b1424ed;padding:12px 18px;border:1px solid #304158;border-radius:10px;color:#c5d4e5;font-size:12px;text-align:center;z-index:2;white-space:nowrap}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:#101b2b;color:#47caff;z-index:5}
+#cameraPreview{position:fixed;top:85px;right:18px;width:260px;padding:10px;background:#0b1424ed;border:1px solid #304158;border-radius:12px;z-index:3}
+#cameraPreview h3{font-size:14px;margin:0 0 8px}
+#cameraFeed{display:block;width:100%;height:165px;object-fit:cover;background:#050b13;border:1px solid #304158;border-radius:7px}
+#cameraNote{font-size:11px;color:#9eafc5;margin-top:7px}
+#missionComplete{display:none;position:fixed;inset:0;z-index:10;background:rgba(3,10,20,.92);align-items:center;justify-content:center;text-align:center}
+.completeBox{background:#102238;border:1px solid #39c6ff;border-radius:16px;padding:35px;width:340px}
+.completeBox h1{color:#39c6ff}
+.completeBox button{padding:12px 25px;background:#39c6ff;border:0;border-radius:7px;font-weight:bold;cursor:pointer}
+@media(max-width:700px){
+#cameraPreview{width:190px;top:76px;right:8px;padding:7px}
+#cameraFeed{height:120px}
+#panel{width:190px;left:8px;top:76px;padding:12px}
+#help{font-size:10px;white-space:normal;width:90%}
+}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+
+<div id="loading">Loading RoboWare...</div>
+<div id="game"></div>
+
+<header id="topbar">
+<div class="logo">ROBO<span>WARE</span> | ADVANCED ROBOTICS</div>
+<div id="connection">● CONNECTING TO ROBOT</div>
+</header>
+
+<aside id="panel">
+<h3>ROBOT STATUS</h3>
+<div class="info">MISSION<strong>Pick and Place</strong></div>
+<div class="info">DELIVERED<strong id="deliveredStatus">0 / 4</strong></div>
+<div class="info">HAND TRACKING<strong id="handStatus">Not detected</strong></div>
+<div class="info">GRIPPER<strong id="gripStatus">Open</strong></div>
+<div class="info">CARGO<strong id="cargoStatus">No cargo</strong></div>
+<div class="info">SCORE<strong id="score">000</strong></div>
+<div class="info">CONTROL<strong>Independent Joints</strong></div>
+</aside>
+
+<aside id="cameraPreview">
+<h3>LIVE CAMERA</h3>
+<img id="cameraFeed" alt="Live camera preview">
+<div id="cameraNote">Connecting to camera...</div>
+</aside>
+
+<div id="help">
+Hand left/right: Base · Hand up/down: Shoulder · Finger openness: Elbow · Tilt: Wrist · Pinch: Grip
+</div>
+
+<div id="missionComplete">
+<div class="completeBox">
+<h1>MISSION COMPLETE!</h1>
+<p>All cargo delivered successfully.</p>
+<h2 id="finalScore">SCORE: 400</h2>
+<button onclick="location.reload()">PLAY AGAIN</button>
+</div>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import {OrbitControls} from "three/addons/controls/OrbitControls.js";
+
+const SERVER="http://127.0.0.1:5000";
+
+/* SCENE */
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x101b2b);
+scene.fog=new THREE.Fog(0x101b2b,22,40);
+
+const camera=new THREE.PerspectiveCamera(50,window.innerWidth/window.innerHeight,.1,100);
+camera.position.set(9,8,11);
+
+const renderer=new THREE.WebGLRenderer({
+ antialias:false,
+ powerPreference:"high-performance"
+});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setPixelRatio(0.75);
+renderer.shadowMap.enabled=false;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+document.getElementById("game").appendChild(renderer.domElement);
+
+const controls=new OrbitControls(camera,renderer.domElement);
+controls.target.set(0,1.2,0);
+controls.enableDamping=true;
+controls.maxPolarAngle=Math.PI/2.05;
+controls.minDistance=6;
+controls.maxDistance=22;
+
+/* LIGHTS */
+scene.add(new THREE.HemisphereLight(0xc5e3ff,0x253044,2));
+const sun=new THREE.DirectionalLight(0xffffff,2.5);
+sun.position.set(7,12,6);
+scene.add(sun);
+
+const fillLight=new THREE.PointLight(0x238acb,18,18);
+fillLight.position.set(-5,5,4);
+scene.add(fillLight);
+
+/* MATERIALS */
+const mat={
+ floor:new THREE.MeshStandardMaterial({color:0x263548,roughness:.85}),
+ metal:new THREE.MeshStandardMaterial({color:0x9aafc4,metalness:.65,roughness:.3}),
+ dark:new THREE.MeshStandardMaterial({color:0x172536,metalness:.4}),
+ yellow:new THREE.MeshStandardMaterial({color:0xffbd38}),
+ blue:new THREE.MeshStandardMaterial({color:0x258ee8}),
+ red:new THREE.MeshStandardMaterial({color:0xe64c55}),
+ green:new THREE.MeshStandardMaterial({color:0x35c98c}),
+ white:new THREE.MeshStandardMaterial({color:0xe6edf5})
+};
+
+function cube(w,h,d,m,x,y,z,parent=scene){
+ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);
+ o.position.set(x,y,z);
+ parent.add(o);
+ return o;
+}
+
+function cylinder(radiusTop,radiusBottom,height,material,x,y,z,parent=scene,segments=24){
+ const o=new THREE.Mesh(
+  new THREE.CylinderGeometry(radiusTop,radiusBottom,height,segments),
+  material
+ );
+ o.position.set(x,y,z);
+ parent.add(o);
+ return o;
+}
+
+/* WAREHOUSE */
+cube(20,.3,16,mat.floor,0,-.2,0);
+const grid=new THREE.GridHelper(20,20,0x4a6a87,0x34475d);
+grid.position.y=-.04;
+scene.add(grid);
+
+cube(20,6,.3,mat.dark,0,3,-8);
+cube(.3,6,16,mat.dark,-10,3,0);
+cube(.3,6,16,mat.dark,10,3,0);
+
+function shelf(x,z){
+ for(let y=.5;y<=3.5;y+=1.5){
+  cube(.18,1.1,3,mat.metal,x,y,z-1.5);
+  cube(.18,1.1,3,mat.metal,x,y,z+1.5);
+  cube(3,.14,6,mat.blue,x+1.5,y+.55,z);
+ }
+}
+shelf(-7,-2);
+shelf(5,-2);
+
+/* CONVEYOR */
+cube(5,.3,1.5,mat.dark,0,.2,-4);
+cube(5,.08,1.3,mat.metal,0,.4,-4);
+for(let x=-2;x<=2;x+=.5){
+ const r=cylinder(.08,.08,1.3,mat.metal,x,.5,-4,scene,12);
+ r.rotation.z=Math.PI/2;
+}
+
+/* DELIVERY AREA */
+const targetMat=new THREE.MeshStandardMaterial({
+ color:0x20d99a,
+ transparent:true,
+ opacity:.35
+});
+cube(2.2,.04,2.2,targetMat,1.5,.02,-.3);
+
+const outline=new THREE.LineSegments(
+ new THREE.EdgesGeometry(new THREE.BoxGeometry(2.2,.04,2.2)),
+ new THREE.LineBasicMaterial({color:0x35ffb0})
+);
+outline.position.set(1.5,.04,-.3);
+scene.add(outline);
+
+/* CARGO */
+const cargo=[];
+function makeCargo(material,x,z){
+ const group=new THREE.Group();
+ cube(.75,.75,.75,material,0,.375,0,group);
+ cube(.77,.05,.05,mat.white,0,.43,0,group);
+ group.position.set(x,0,z);
+ scene.add(group);
+ cargo.push(group);
+}
+makeCargo(mat.red,-1.2,2.4);
+makeCargo(mat.blue,-1.2,1.5);
+makeCargo(mat.yellow,1.2,2.4);
+makeCargo(mat.green,1.2,1.5);
+
+/* ROBOT BODY */
+const robot=new THREE.Group();
+scene.add(robot);
+robot.position.set(0,0,1.5);
+
+const armBlue=new THREE.MeshStandardMaterial({
+ color:0x35bde8,metalness:.65,roughness:.25
+});
+const armOrange=new THREE.MeshStandardMaterial({
+ color:0xffa52b,metalness:.55,roughness:.3
+});
+const armDark=new THREE.MeshStandardMaterial({
+ color:0x167da9,metalness:.7,roughness:.28
+});
+const silver=new THREE.MeshStandardMaterial({
+ color:0xc3d5e5,metalness:.8,roughness:.22
+});
+const blackRubber=new THREE.MeshStandardMaterial({
+ color:0x101923,roughness:.8
+});
+
+/* BASE */
+cylinder(.58,.68,.22,armBlue,0,.18,0,robot,32);
+cylinder(.39,.43,.09,armOrange,0,.33,0,robot,32);
+cylinder(.32,.35,.08,armDark,0,.405,0,robot,32);
+
+const baseBolts=[];
+for(let i=0;i<8;i++){
+ const a=i*Math.PI/4;
+ const bolt=cylinder(.035,.035,.025,silver,
+  Math.cos(a)*.48,.30,Math.sin(a)*.48,robot,10);
+ baseBolts.push(bolt);
+}
+
+const turntable=new THREE.Group();
+turntable.position.y=.45;
+robot.add(turntable);
+
+cylinder(.31,.34,.13,armBlue,0,.08,0,turntable,32);
+cylinder(.25,.28,.045,armOrange,0,.17,0,turntable,32);
+
+/* JOINT DETAILS */
+function armJoint(parent,radius){
+ const group=new THREE.Group();
+ parent.add(group);
+
+ const main=new THREE.Mesh(
+  new THREE.SphereGeometry(radius,20,20),
+  armOrange
+ );
+ group.add(main);
+
+ const ring=new THREE.Mesh(
+  new THREE.TorusGeometry(radius*.88,.035,8,24),
+  silver
+ );
+ group.add(ring);
+
+ const hub=new THREE.Mesh(
+  new THREE.CylinderGeometry(radius*.48,radius*.48,.10,20),
+  armDark
+ );
+ hub.rotation.x=Math.PI/2;
+ group.add(hub);
+
+ const center=new THREE.Mesh(
+  new THREE.CylinderGeometry(radius*.25,radius*.25,.115,16),
+  silver
+ );
+ center.rotation.x=Math.PI/2;
+ group.add(center);
+
+ return group;
+}
+
+/* DETAILED ARM LINKS */
+function armLink(parent,radius,length){
+ const group=new THREE.Group();
+ parent.add(group);
+
+ // Main tapered structural arm
+ const main=new THREE.Mesh(
+  new THREE.CylinderGeometry(radius*.78,radius,length,20),
+  armBlue
+ );
+ main.position.y=length/2;
+ group.add(main);
+
+ // Reinforced end collars
+ const lowerCollar=new THREE.Mesh(
+  new THREE.CylinderGeometry(radius*1.22,radius*1.22,.12,20),
+  armDark
+ );
+ lowerCollar.position.y=.12;
+ group.add(lowerCollar);
+
+ const upperCollar=new THREE.Mesh(
+  new THREE.CylinderGeometry(radius*1.15,radius*1.15,.12,20),
+  armDark
+ );
+ upperCollar.position.y=length-.12;
+ group.add(upperCollar);
+
+ // Slim orange center stripe
+ const stripe=new THREE.Mesh(
+  new THREE.CylinderGeometry(radius*.82,radius*.82,.055,16),
+  armOrange
+ );
+ stripe.position.y=length*.52;
+ group.add(stripe);
+
+ // Side reinforcement rails
+ for(const side of [-1,1]){
+  const rail=new THREE.Mesh(
+   new THREE.BoxGeometry(radius*.28,length*.68,radius*.35),
+   armDark
+  );
+  rail.position.set(side*radius*.82,length*.5,0);
+  group.add(rail);
+ }
+
+ // Small metallic end caps
+ for(const y of [.22,length-.22]){
+  const cap=new THREE.Mesh(
+   new THREE.CylinderGeometry(radius*.45,radius*.45,.035,16),
+   silver
+  );
+  cap.position.y=y;
+  group.add(cap);
+ }
+
+ return group;
+}
+
+/* SHOULDER AND UPPER ARM */
+const shoulder=new THREE.Group();
+turntable.add(shoulder);
+
+const upperLength=1.7;
+const foreLength=1.45;
+
+armJoint(shoulder,.19);
+armLink(shoulder,.13,upperLength);
+
+// Shoulder motor housing
+const shoulderMotor=cylinder(.22,.22,.30,armDark,0,.03,0,shoulder,24);
+shoulderMotor.rotation.z=Math.PI/2;
+
+const shoulderCap=cylinder(.15,.15,.32,armOrange,0,.03,0,shoulder,24);
+shoulderCap.rotation.z=Math.PI/2;
+
+const elbow=new THREE.Group();
+elbow.position.y=upperLength;
+shoulder.add(elbow);
+
+armJoint(elbow,.17);
+armLink(elbow,.105,foreLength);
+
+// Elbow motor detail
+const elbowMotor=cylinder(.19,.19,.25,armDark,0,0,0,elbow,24);
+elbowMotor.rotation.z=Math.PI/2;
+
+const elbowCap=cylinder(.12,.12,.27,armOrange,0,0,0,elbow,24);
+elbowCap.rotation.z=Math.PI/2;
+
+/* WRIST */
+const wrist=new THREE.Group();
+wrist.position.y=foreLength;
+elbow.add(wrist);
+
+armJoint(wrist,.13);
+
+const wristConnector=cylinder(.10,.09,.28,armDark,0,-.14,0,wrist,20);
+const wristRing=cylinder(.115,.115,.055,silver,0,-.25,0,wrist,20);
+
+const wristHousing=new THREE.Mesh(
+ new THREE.BoxGeometry(.30,.17,.28),
+ armBlue
+);
+wristHousing.position.y=-.31;
+wrist.add(wristHousing);
+
+const gripperMount=new THREE.Mesh(
+ new THREE.BoxGeometry(.32,.19,.27),
+ armOrange
+);
+gripperMount.position.y=-.40;
+wrist.add(gripperMount);
+
+/* GRIPPER */
+const leftFinger=new THREE.Mesh(
+ new THREE.BoxGeometry(.10,.48,.12),armBlue
+);
+const rightFinger=new THREE.Mesh(
+ new THREE.BoxGeometry(.10,.48,.12),armBlue
+);
+leftFinger.position.y=-.55;
+rightFinger.position.y=-.55;
+wrist.add(leftFinger,rightFinger);
+
+const padMaterial=new THREE.MeshStandardMaterial({
+ color:0xffa52b,metalness:.3,roughness:.45
+});
+
+const leftPad=new THREE.Mesh(
+ new THREE.BoxGeometry(.045,.25,.13),padMaterial
+);
+const rightPad=new THREE.Mesh(
+ new THREE.BoxGeometry(.045,.25,.13),padMaterial
+);
+leftPad.position.set(.05,0,.015);
+rightPad.position.set(-.05,0,.015);
+leftFinger.add(leftPad);
+rightFinger.add(rightPad);
+
+// Finger tips
+const leftTip=new THREE.Mesh(
+ new THREE.BoxGeometry(.11,.07,.14),armOrange
+);
+const rightTip=new THREE.Mesh(
+ new THREE.BoxGeometry(.11,.07,.14),armOrange
+);
+leftTip.position.y=-.22;
+rightTip.position.y=-.22;
+leftFinger.add(leftTip);
+rightFinger.add(rightTip);
+
+function gripperTip(){
+ const p=new THREE.Vector3(0,-.55,0);
+ wrist.localToWorld(p);
+ return p;
+}
+
+/* HAND INPUT */
+let hand={
+ x:0,y:0,width:320,height:240,
+ detected:false,pinch:false,elbow:.5,wrist:0
+};
+
+let targetBase=0;
+let targetShoulder=.55;
+let targetElbow=.8;
+let targetWrist=0;
+let targetGrip=.48;
+
+let holding=null;
+let score=0;
+let deliveredCount=0;
+let deliveredCargo=new Set();
+let previousPinch=false;
+let lastSuccessfulDrop=0;
+
+const handStatus=document.getElementById("handStatus");
+const gripStatus=document.getElementById("gripStatus");
+const cargoStatus=document.getElementById("cargoStatus");
+const connection=document.getElementById("connection");
+
+/* INDEPENDENT JOINT CONTROL */
+/* The control mapping is intentionally unchanged. */
+function updateArmTargets(){
+
+ const nx=THREE.MathUtils.clamp(
+  Number(hand.x)/Math.max(1,Number(hand.width)),0,1
+ );
+
+ const ny=THREE.MathUtils.clamp(
+  Number(hand.y)/Math.max(1,Number(hand.height)),0,1
+ );
+
+ targetBase=(nx-.5)*Math.PI*3.5;
+
+ targetShoulder=THREE.MathUtils.lerp(
+  1.35,-.20,ny
+ );
+
+ const openness=THREE.MathUtils.clamp(
+  Number(hand.elbow??.5),0,1
+ );
+
+ targetElbow=THREE.MathUtils.lerp(
+  2.15,.05,openness
+ );
+
+ const wristValue=THREE.MathUtils.clamp(
+  Number(hand.wrist??0),-1,1
+ );
+
+ targetWrist=wristValue*1.15;
+}
+
+/* HAND SERVER */
+let readingHand=false;
+
+async function readHand(){
+ if(readingHand)return;
+ readingHand=true;
+
+ try{
+  const response=await fetch(SERVER+"/hand",{cache:"no-store"});
+  if(!response.ok)throw new Error("Server unavailable");
+
+  hand=await response.json();
+
+  if(hand.detected){
+   connection.textContent="● HAND CONNECTED";
+   connection.style.color="#68e6a5";
+   handStatus.textContent="Hand detected";
+   handStatus.style.color="#68e6a5";
+   updateArmTargets();
+  }else{
+   connection.textContent="● WAITING FOR HAND";
+   connection.style.color="#ffbd38";
+   handStatus.textContent="Not detected";
+   handStatus.style.color="#ffbd38";
+  }
+
+  gripStatus.textContent=hand.pinch?"POWER GRIP":"Open";
+  gripStatus.style.color=hand.pinch?"#ffbd38":"#68e6a5";
+
+ }catch(error){
+  connection.textContent="● FLASK NOT CONNECTED";
+  connection.style.color="#ff6b6b";
+  handStatus.textContent="Server unavailable";
+  handStatus.style.color="#ff6b6b";
+ }finally{
+  readingHand=false;
+  setTimeout(readHand,40);
+ }
+}
+readHand();
+
+/* PICK AND DROP */
+function handleGrip(){
+
+ const pinching=!!hand.detected&&!!hand.pinch;
+
+ if(pinching&&!holding){
+  const tip=gripperTip();
+  let nearest=null;
+  let nearestDistance=Infinity;
+
+  for(const item of cargo){
+   if(deliveredCargo.has(item))continue;
+
+   const center=new THREE.Vector3();
+   item.getWorldPosition(center);
+   center.y+=.375;
+
+   const distance=center.distanceTo(tip);
+
+   if(distance<.85&&distance<nearestDistance){
+    nearest=item;
+    nearestDistance=distance;
+   }
+  }
+
+  if(nearest){
+   holding=nearest;
+   wrist.attach(holding);
+   holding.position.set(0,-.925,0);
+   holding.rotation.set(0,0,0);
+   cargoStatus.textContent="Cargo secured";
+  }
+ }
+
+ if(!pinching&&previousPinch&&holding){
+  const dropped=holding;
+  scene.attach(dropped);
+
+  const p=new THREE.Vector3();
+  dropped.getWorldPosition(p);
+  dropped.position.y=0;
+
+  if(Math.abs(p.x-1.5)<1.25&&Math.abs(p.z+.3)<1.25){
+   score+=100;
+   deliveredCount++;
+   deliveredCargo.add(dropped);
+
+   document.getElementById("score").textContent=
+    String(score).padStart(3,"0");
+
+   document.getElementById("deliveredStatus").textContent=
+    deliveredCount+" / 4";
+
+   cargoStatus.textContent="Correct placement! +100";
+   lastSuccessfulDrop=Date.now();
+
+   if(deliveredCount===4){
+    document.getElementById("finalScore").textContent=
+     "SCORE: "+score;
+
+    document.getElementById("missionComplete").style.display="flex";
+
+    setTimeout(async () => {
+        try {
+            await fetch("http://127.0.0.1:5000/shutdown", {
+                method: "POST"
+            });
+        } catch (error) {
+            console.error("Shutdown request failed:", error);
+        }
+    }, 7000);
+}
+  }else{
+   cargoStatus.textContent="Cargo dropped";
+  }
+
+  holding=null;
+ }
+
+ previousPinch=pinching;
+}
+
+/* ANIMATION */
+const clock=new THREE.Clock();
+let lastRenderTime=0;
+
+function animate(now){
+ requestAnimationFrame(animate);
+
+ const dt=Math.min(clock.getDelta(),.05);
+ const jointSpeed=12;
+
+ turntable.rotation.y=THREE.MathUtils.damp(
+  turntable.rotation.y,targetBase,jointSpeed,dt
+ );
+
+ shoulder.rotation.z=THREE.MathUtils.damp(
+  shoulder.rotation.z,targetShoulder,jointSpeed,dt
+ );
+
+ elbow.rotation.z=THREE.MathUtils.damp(
+  elbow.rotation.z,targetElbow,jointSpeed,dt
+ );
+
+ wrist.rotation.x=THREE.MathUtils.damp(
+  wrist.rotation.x,targetWrist,jointSpeed,dt
+ );
+
+ const gripTarget=
+  hand.detected&&hand.pinch?.055:.48;
+
+ targetGrip=THREE.MathUtils.damp(
+  targetGrip,gripTarget,24,dt
+ );
+
+ leftFinger.position.x=-targetGrip;
+ rightFinger.position.x=targetGrip;
+
+ handleGrip();
+
+ if(
+  Date.now()-lastSuccessfulDrop>2500&&
+  cargoStatus.textContent==="Correct placement! +100"
+ ){
+  cargoStatus.textContent="No cargo";
+ }
+
+ if(now-lastRenderTime>=1000/30){
+  lastRenderTime=now;
+  controls.update();
+  renderer.render(scene,camera);
+ }
+}
+requestAnimationFrame(animate);
+
+/* RESIZE */
+window.addEventListener("resize",()=>{
+ camera.aspect=window.innerWidth/window.innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(window.innerWidth,window.innerHeight);
+});
+
+/* CAMERA */
+const cameraFeed=document.getElementById("cameraFeed");
+const cameraNote=document.getElementById("cameraNote");
+
+function connectCamera(){
+ cameraNote.textContent="Connecting to camera...";
+ cameraNote.style.color="#ffbd38";
+ cameraFeed.src=SERVER+"/video_feed";
+}
+
+cameraFeed.onload=()=>{
+ cameraNote.textContent="Live camera stream";
+ cameraNote.style.color="#68e6a5";
+};
+
+cameraFeed.onerror=()=>{
+ cameraNote.textContent="Camera stream disconnected";
+ cameraNote.style.color="#ff6b6b";
+ setTimeout(connectCamera,2000);
+};
+
+connectCamera();
+
+document.getElementById("loading").style.display="none";
+</script>
+</body>
+</html>
